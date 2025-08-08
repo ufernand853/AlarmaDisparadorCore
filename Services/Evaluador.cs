@@ -39,7 +39,7 @@ namespace AlarmaDisparadorCore.Services
 
                 if (cumpleTodas)
                 {
-                    Console.WriteLine($"Alarma disparada: {regla.Mensaje}");
+                    Console.WriteLine($"Regla '{regla.Nombre}' disparada: {regla.Mensaje}");
                     LogDisparo(regla);
                 }
             }
