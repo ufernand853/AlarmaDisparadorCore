@@ -1,11 +1,12 @@
 using AlarmaDisparadorCore.Models;
 using Microsoft.Extensions.Configuration;
-using System.Data.SqlClient;
-using System.Data;
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Data;
+using System.Data.SqlClient;
 using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
 
 namespace AlarmaDisparadorCore.Services
 {
@@ -136,7 +137,7 @@ namespace AlarmaDisparadorCore.Services
             {
                 condiciones.Add(new CondicionRegla
                 {
-                    Id = reader.GetInt32(0),
+                    Id = reader.GetInt16(0),
                     IdRegla = reader.GetInt32(1),
                     IdValor = reader.GetInt32(2),
                     Operador = reader.GetString(3),
@@ -155,12 +156,12 @@ namespace AlarmaDisparadorCore.Services
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {
-                int id = reader.GetInt32(0);
-                int tipo = reader.GetInt32(1);
+                int id = reader.GetInt16(0);   // smallint -> Int16
+                int tipo = reader.GetByte(1);
                 object valor = tipo switch
                 {
                     1 => reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
-                    2 => reader.IsDBNull(3) ? 0.0 : reader.GetDouble(3),
+                    2 => reader.IsDBNull(3) ? 0.0 : reader.GetDecimal(3),
                     3 => reader.IsDBNull(4) ? "" : reader.GetString(4),
                     5 => reader.IsDBNull(5) ? 0 : reader.GetBoolean(5) ? 1 : 0,
                     _ => null
