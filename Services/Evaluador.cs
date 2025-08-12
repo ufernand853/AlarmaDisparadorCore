@@ -144,17 +144,24 @@ namespace AlarmaDisparadorCore.Services
                 using var cmd = new SqlCommand("SELECT id_condicion, id_regla, id_valor, operador, valor FROM condiciones_regla WHERE id_regla = @id", conn);
                 cmd.Parameters.AddWithValue("@id", idRegla);
                 using var reader = cmd.ExecuteReader();
+                var iId = reader.GetOrdinal("id_condicion");
+                var iIdRegla = reader.GetOrdinal("id_regla");
+                var iIdValor = reader.GetOrdinal("id_valor");
+                var iOperador = reader.GetOrdinal("operador");
+                var iValor = reader.GetOrdinal("valor");
+
                 while (reader.Read())
                 {
                     condiciones.Add(new CondicionRegla
                     {
-                        Id = reader.GetInt16(0),
-                        IdRegla = reader.GetInt32(1),
-                        IdValor = reader.GetInt32(2),
-                        Operador = reader.GetString(3),
-                        Valor = reader.GetString(4)
+                        Id = reader.GetInt32(iId),          // INT -> GetInt32
+                        IdRegla = reader.GetInt32(iIdRegla),     // INT -> GetInt32
+                        IdValor = reader.GetInt32(iIdValor),     // SMALLINT OK to read as Int32
+                        Operador = reader.GetString(iOperador),   // NVARCHAR -> GetString
+                        Valor = reader.GetDouble(iValor).ToString(System.Globalization.CultureInfo.InvariantCulture)
                     });
                 }
+                return condiciones;
             }
             catch
             {
@@ -213,7 +220,7 @@ namespace AlarmaDisparadorCore.Services
             try
             {
                 conn.Open();
-                using var cmd = new SqlCommand("INSERT INTO DisparosAlarmas (id_regla, mensaje, timestamp) VALUES (@id, @msg, @ts)", conn);
+                using var cmd = new SqlCommand("INSERT INTO disparos_alarma (id_regla, mensaje, timestamp) VALUES (@id, @msg, @ts)", conn);
                 cmd.Parameters.AddWithValue("@id", regla.Id);
                 cmd.Parameters.AddWithValue("@msg", regla.Mensaje ?? "");
                 cmd.Parameters.AddWithValue("@ts", DateTime.Now);
