@@ -1,5 +1,22 @@
 using AlarmaDisparadorCore.Services;
+using Microsoft.Extensions.Configuration;
+using System;
+using System.IO;
+using System.Threading;
 
+var config = new ConfigurationBuilder()
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json")
+    .Build();
+
+var intervaloSegundos = config.GetValue<int>("IntervaloSegundos", 60);
 var evaluador = new Evaluador();
-evaluador.EvaluarReglas();
+
+while (true)
+{
+    Console.WriteLine($"Inicio de evaluación: {DateTime.Now:O}");
+    evaluador.EvaluarReglas();
+    Console.WriteLine($"Fin de evaluación: {DateTime.Now:O}");
+    Thread.Sleep(TimeSpan.FromSeconds(intervaloSegundos));
+}
 
