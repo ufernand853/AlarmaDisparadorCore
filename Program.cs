@@ -14,6 +14,7 @@ if (int.TryParse(config["IntervaloSegundos"], out var parsedIntervalo))
 {
     intervaloSegundos = parsedIntervalo;
 }
+
 var evaluador = new Evaluador();
 
 while (true)
