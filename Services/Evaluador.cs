@@ -44,8 +44,18 @@ namespace AlarmaDisparadorCore.Services
 
                 if (cumpleTodas)
                 {
-                    Console.WriteLine($"Regla '{regla.Nombre}' disparada: {regla.Mensaje}");
-                    LogDisparo(regla);
+                    if (!regla.EnCurso)
+                    {
+                        Console.WriteLine($"Regla '{regla.Nombre}' disparada: {regla.Mensaje}");
+                        LogDisparo(regla);
+                        regla.EnCurso = true;
+                        ActualizarEnCursoRegla(regla);
+                    }
+                }
+                else if (regla.EnCurso)
+                {
+                    regla.EnCurso = false;
+                    ActualizarEnCursoRegla(regla);
                 }
             }
         }
@@ -111,7 +121,7 @@ namespace AlarmaDisparadorCore.Services
             try
             {
                 conn.Open();
-                using var cmd = new SqlCommand("SELECT id_regla, nombre, operador, mensaje, activo FROM reglas_alarma", conn);
+                using var cmd = new SqlCommand("SELECT id_regla, nombre, operador, mensaje, activo, en_curso FROM reglas_alarma", conn);
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
                 {
@@ -121,7 +131,8 @@ namespace AlarmaDisparadorCore.Services
                         Nombre = reader.GetString(1),
                         Operador = reader.GetString(2),
                         Mensaje = reader.IsDBNull(3) ? "" : reader.GetString(3),
-                        Activo = reader.GetBoolean(4)
+                        Activo = reader.GetBoolean(4),
+                        EnCurso = reader.IsDBNull(5) ? false : reader.GetBoolean(5)
                     });
                 }
             }
@@ -212,6 +223,25 @@ namespace AlarmaDisparadorCore.Services
                 throw;
             }
             return valores;
+        }
+
+        private void ActualizarEnCursoRegla(ReglaAlarma regla)
+        {
+            using var conn = new SqlConnection(_connectionString);
+            try
+            {
+                conn.Open();
+                using var cmd = new SqlCommand("UPDATE reglas_alarma SET en_curso = @enCurso WHERE id_regla = @id", conn);
+                cmd.Parameters.AddWithValue("@enCurso", regla.EnCurso);
+                cmd.Parameters.AddWithValue("@id", regla.Id);
+                cmd.ExecuteNonQuery();
+            }
+            catch
+            {
+                if (conn.State == ConnectionState.Open)
+                    conn.Close();
+                throw;
+            }
         }
 
         private void LogDisparo(ReglaAlarma regla)
