@@ -7,5 +7,6 @@ namespace AlarmaDisparadorCore.Models
         public string Operador { get; set; }
         public string Mensaje { get; set; }
         public bool Activo { get; set; }
+        public bool EnCurso { get; set; } = false;
     }
 }
