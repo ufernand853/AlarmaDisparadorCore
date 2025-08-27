@@ -6,7 +6,6 @@ using System.Data;
 using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 
 namespace AlarmaDisparadorCore.Services
 {
@@ -44,10 +43,14 @@ namespace AlarmaDisparadorCore.Services
 
                 if (cumpleTodas)
                 {
-                    if (!regla.EnCurso)
+                    if (DebeDisparar(regla))
                     {
                         Console.WriteLine($"Regla '{regla.Nombre}' disparada: {regla.Mensaje}");
                         LogDisparo(regla);
+                    }
+
+                    if (!regla.EnCurso)
+                    {
                         regla.EnCurso = true;
                         ActualizarEnCursoRegla(regla);
                     }
@@ -121,7 +124,7 @@ namespace AlarmaDisparadorCore.Services
             try
             {
                 conn.Open();
-                using var cmd = new SqlCommand("SELECT id_regla, nombre, operador, mensaje, activo, en_curso FROM reglas_alarma", conn);
+                using var cmd = new SqlCommand("SELECT id_regla, nombre, operador, mensaje, activo, en_curso, enviar_correo, email_destino, hora_inicio, hora_fin, intervalo_min FROM reglas_alarma", conn);
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
                 {
@@ -132,7 +135,12 @@ namespace AlarmaDisparadorCore.Services
                         Operador = reader.GetString(2),
                         Mensaje = reader.IsDBNull(3) ? "" : reader.GetString(3),
                         Activo = reader.GetBoolean(4),
-                        EnCurso = reader.IsDBNull(5) ? false : reader.GetBoolean(5)
+                        EnCurso = reader.IsDBNull(5) ? false : reader.GetBoolean(5),
+                        EnviarCorreo = reader.IsDBNull(6) ? false : reader.GetBoolean(6),
+                        EmailDestino = reader.IsDBNull(7) ? null : reader.GetString(7),
+                        HoraInicio = reader.IsDBNull(8) ? null : reader.GetTimeSpan(8),
+                        HoraFin = reader.IsDBNull(9) ? null : reader.GetTimeSpan(9),
+                        IntervaloMin = reader.IsDBNull(10) ? 0 : Convert.ToInt32(reader.GetValue(10))
                     });
                 }
             }
@@ -223,6 +231,39 @@ namespace AlarmaDisparadorCore.Services
                 throw;
             }
             return valores;
+        }
+
+        private bool DebeDisparar(ReglaAlarma regla)
+        {
+            if (regla.IntervaloMin <= 0)
+                return true;
+
+            var ultimo = ObtenerUltimoDisparo(regla.Id);
+            if (ultimo == null)
+                return true;
+
+            return (DateTime.Now - ultimo.Value).TotalMinutes >= regla.IntervaloMin;
+        }
+
+        private DateTime? ObtenerUltimoDisparo(int idRegla)
+        {
+            using var conn = new SqlConnection(_connectionString);
+            try
+            {
+                conn.Open();
+                using var cmd = new SqlCommand("SELECT TOP 1 timestamp FROM disparos_alarma WHERE id_regla = @id ORDER BY timestamp DESC", conn);
+                cmd.Parameters.AddWithValue("@id", idRegla);
+                var result = cmd.ExecuteScalar();
+                if (result == null || result == DBNull.Value)
+                    return null;
+                return Convert.ToDateTime(result);
+            }
+            catch
+            {
+                if (conn.State == ConnectionState.Open)
+                    conn.Close();
+                throw;
+            }
         }
 
         private void ActualizarEnCursoRegla(ReglaAlarma regla)
