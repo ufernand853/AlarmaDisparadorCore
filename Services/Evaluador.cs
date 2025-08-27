@@ -4,15 +4,15 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
+using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 
 namespace AlarmaDisparadorCore.Services
 {
     public class Evaluador
     {
-        private string _connectionString;
+        private readonly string _connectionString;
 
         public Evaluador()
         {
@@ -26,8 +26,11 @@ namespace AlarmaDisparadorCore.Services
 
         public void EvaluarReglas()
         {
+            // Reglas
             List<ReglaAlarma> reglas = ObtenerReglas();
-            Dictionary<int, ValorActual> valores = ObtenerValoresActuales();
+
+            // Valores actuales indexados por id_valor (SMALLINT -> short)
+            Dictionary<short, ValorActual> valores = ObtenerValoresActuales();
 
             foreach (var regla in reglas.Where(r => r.Activo))
             {
@@ -35,6 +38,7 @@ namespace AlarmaDisparadorCore.Services
 
                 bool cumpleTodas = condiciones.All(cond =>
                 {
+                    // Si no existe el valor para la condición -> no cumple
                     if (!valores.ContainsKey(cond.IdValor))
                         return false;
 
@@ -60,6 +64,11 @@ namespace AlarmaDisparadorCore.Services
             }
         }
 
+        /// <summary>
+        /// Compara el valor actual (tipado) contra el literal 'valor' según el operador.
+        /// Tipos:
+        /// 1 = entero, 2 = decimal, 3 = string, 5 = bit
+        /// </summary>
         private bool Comparar(ValorActual actual, string operador, string valor)
         {
             try
@@ -67,201 +76,268 @@ namespace AlarmaDisparadorCore.Services
                 switch (actual.Tipo)
                 {
                     case 1: // entero
-                        int vInt = Convert.ToInt32(valor);
-                        int actualInt = Convert.ToInt32(actual.Valor);
-                        return operador switch
                         {
-                            "==" => actualInt == vInt,
-                            "!=" => actualInt != vInt,
-                            ">" => actualInt > vInt,
-                            "<" => actualInt < vInt,
-                            _ => false
-                        };
+                            int esperado = int.Parse(valor, NumberStyles.Integer, CultureInfo.InvariantCulture);
+                            int actualInt = Convert.ToInt32(actual.Valor);
+                            return operador switch
+                            {
+                                "==" => actualInt == esperado,
+                                "!=" => actualInt != esperado,
+                                ">" => actualInt > esperado,
+                                ">=" => actualInt >= esperado,
+                                "<" => actualInt < esperado,
+                                "<=" => actualInt <= esperado,
+                                _ => false
+                            };
+                        }
+
                     case 2: // decimal
-                        double vDec = Convert.ToDouble(valor);
-                        double actualDec = Convert.ToDouble(actual.Valor);
-                        return operador switch
                         {
-                            "==" => actualDec == vDec,
-                            "!=" => actualDec != vDec,
-                            ">" => actualDec > vDec,
-                            "<" => actualDec < vDec,
-                            _ => false
-                        };
+                            double esperado = double.Parse(valor, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture);
+                            double actualDec = Convert.ToDouble(actual.Valor, CultureInfo.InvariantCulture);
+                            return operador switch
+                            {
+                                "==" => actualDec == esperado,
+                                "!=" => actualDec != esperado,
+                                ">" => actualDec > esperado,
+                                ">=" => actualDec >= esperado,
+                                "<" => actualDec < esperado,
+                                "<=" => actualDec <= esperado,
+                                _ => false
+                            };
+                        }
+
                     case 3: // string
-                        return operador switch
                         {
-                            "==" => actual.Valor.ToString() == valor,
-                            "!=" => actual.Valor.ToString() != valor,
-                            _ => false
-                        };
+                            string actualStr = actual.Valor?.ToString() ?? string.Empty;
+                            return operador switch
+                            {
+                                "==" => string.Equals(actualStr, valor, StringComparison.Ordinal),
+                                "!=" => !string.Equals(actualStr, valor, StringComparison.Ordinal),
+                                _ => false
+                            };
+                        }
+
                     case 5: // bit
-                        bool vBit = Convert.ToBoolean(Convert.ToInt32(valor));
-                        bool actualBit = Convert.ToBoolean(Convert.ToInt32(actual.Valor));
-                        return operador switch
                         {
-                            "==" => actualBit == vBit,
-                            "!=" => actualBit != vBit,
-                            _ => false
-                        };
+                            // permitimos "0"/"1" o "true"/"false"
+                            bool esperado = valor is "1" or "true" or "True";
+                            bool actualBit = actual.Valor switch
+                            {
+                                bool b => b,
+                                int i => i != 0,
+                                short s => s != 0,
+                                _ => Convert.ToBoolean(actual.Valor)
+                            };
+
+                            return operador switch
+                            {
+                                "==" => actualBit == esperado,
+                                "!=" => actualBit != esperado,
+                                _ => false
+                            };
+                        }
+
                     default:
                         return false;
                 }
             }
             catch
             {
+                // Cualquier error de parseo o conversión -> condición no cumple
                 return false;
             }
+        }
+        private static string DbValueToString(SqlDataReader reader, int ordinal)
+        {
+            if (reader.IsDBNull(ordinal)) return "";
+            object v = reader.GetValue(ordinal);
+
+            return v switch
+            {
+                string s => s,
+                int i => i.ToString(CultureInfo.InvariantCulture),
+                long l => l.ToString(CultureInfo.InvariantCulture),
+                short s16 => s16.ToString(CultureInfo.InvariantCulture),
+                byte b => b.ToString(CultureInfo.InvariantCulture),
+                decimal m => m.ToString(CultureInfo.InvariantCulture),
+                double d => d.ToString(CultureInfo.InvariantCulture),
+                float f => f.ToString(CultureInfo.InvariantCulture),
+                bool bb => bb ? "1" : "0",
+                DateTime dt => dt.ToString("o", CultureInfo.InvariantCulture),
+                _ => Convert.ToString(v, CultureInfo.InvariantCulture) ?? ""
+            };
         }
 
         private List<ReglaAlarma> ObtenerReglas()
         {
             var reglas = new List<ReglaAlarma>();
+
             using var conn = new SqlConnection(_connectionString);
-            try
+            conn.Open();
+
+            using var cmd = new SqlCommand(
+                "SELECT id_regla, nombre, operador, mensaje, activo, en_curso FROM reglas_alarma",
+                conn);
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                conn.Open();
-                using var cmd = new SqlCommand("SELECT id_regla, nombre, operador, mensaje, activo, en_curso FROM reglas_alarma", conn);
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
+                reglas.Add(new ReglaAlarma
                 {
-                    reglas.Add(new ReglaAlarma
-                    {
-                        Id = reader.GetInt32(0),
-                        Nombre = reader.GetString(1),
-                        Operador = reader.GetString(2),
-                        Mensaje = reader.IsDBNull(3) ? "" : reader.GetString(3),
-                        Activo = reader.GetBoolean(4),
-                        EnCurso = reader.IsDBNull(5) ? false : reader.GetBoolean(5)
-                    });
-                }
+                    Id = reader.GetInt32(0),                      // INT
+                    Nombre = reader.GetString(1),
+                    Operador = reader.GetString(2),
+                    Mensaje = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                    Activo = reader.GetBoolean(4),
+                    EnCurso = reader.IsDBNull(5) ? false : reader.GetBoolean(5)
+                });
             }
-            catch
-            {
-                if (conn.State == ConnectionState.Open)
-                    conn.Close();
-                throw;
-            }
+
             return reglas;
         }
 
         private List<CondicionRegla> ObtenerCondicionesPorRegla(int idRegla)
         {
             var condiciones = new List<CondicionRegla>();
-            using var conn = new SqlConnection(_connectionString);
-            try
-            {
-                conn.Open();
-                using var cmd = new SqlCommand("SELECT id_condicion, id_regla, id_valor, operador, valor FROM condiciones_regla WHERE id_regla = @id", conn);
-                cmd.Parameters.AddWithValue("@id", idRegla);
-                using var reader = cmd.ExecuteReader();
-                var iId = reader.GetOrdinal("id_condicion");
-                var iIdRegla = reader.GetOrdinal("id_regla");
-                var iIdValor = reader.GetOrdinal("id_valor");
-                var iOperador = reader.GetOrdinal("operador");
-                var iValor = reader.GetOrdinal("valor");
 
-                while (reader.Read())
-                {
-                    condiciones.Add(new CondicionRegla
-                    {
-                        Id = reader.GetInt32(iId),          // INT -> GetInt32
-                        IdRegla = reader.GetInt32(iIdRegla),     // INT -> GetInt32
-                        IdValor = reader.GetInt32(iIdValor),     // SMALLINT OK to read as Int32
-                        Operador = reader.GetString(iOperador),   // NVARCHAR -> GetString
-                        Valor = reader.GetDouble(iValor).ToString(System.Globalization.CultureInfo.InvariantCulture)
-                    });
-                }
-                return condiciones;
-            }
-            catch
+            using var conn = new SqlConnection(_connectionString);
+            conn.Open();
+
+            using var cmd = new SqlCommand(
+                "SELECT id_condicion, id_regla, id_valor, operador, valor FROM condiciones_regla WHERE id_regla = @id",
+                conn);
+            cmd.Parameters.Add("@id", SqlDbType.Int).Value = idRegla;
+
+            using var reader = cmd.ExecuteReader();
+
+            int iId = reader.GetOrdinal("id_condicion");
+            int iIdRegla = reader.GetOrdinal("id_regla");
+            int iIdValor = reader.GetOrdinal("id_valor");
+            int iOperador = reader.GetOrdinal("operador");
+            int iValor = reader.GetOrdinal("valor");
+
+            while (reader.Read())
             {
-                if (conn.State == ConnectionState.Open)
-                    conn.Close();
-                throw;
+                condiciones.Add(new CondicionRegla
+                {
+                    Id = reader.GetInt32(iId),            // INT
+                    IdRegla = reader.GetInt32(iIdRegla),       // INT
+                    IdValor = reader.GetInt16(iIdValor),       // SMALLINT -> short
+                    Operador = reader.IsDBNull(iOperador) ? "" : reader.GetString(iOperador),
+                    Valor = DbValueToString(reader, iValor)  // << en vez de GetString(iValor)
+                });
             }
+
             return condiciones;
         }
 
-        private Dictionary<int, ValorActual> ObtenerValoresActuales()
+        private Dictionary<short, ValorActual> ObtenerValoresActuales()
         {
-            var valores = new Dictionary<int, ValorActual>();
-            using var conn = new SqlConnection(_connectionString);
-            try
-            {
-                conn.Open();
-                using var cmd = new SqlCommand("SELECT id_valor, id_tipovalor, valor_entero, valor_decimal, valor_string, valor_bit FROM valores", conn);
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    int id = reader.GetInt16(0);   // smallint -> Int16
-                    int tipo = reader.GetByte(1);
-                    object valor = tipo switch
-                    {
-                        1 => reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
-                        2 => reader.IsDBNull(3) ? 0.0 : reader.GetDecimal(3),
-                        3 => reader.IsDBNull(4) ? "" : reader.GetString(4),
-                        5 => reader.IsDBNull(5) ? 0 : reader.GetBoolean(5) ? 1 : 0,
-                        _ => null
-                    };
+            var valores = new Dictionary<short, ValorActual>();
 
-                    if (valor != null)
-                    {
-                        valores[id] = new ValorActual
+            using var conn = new SqlConnection(_connectionString);
+            conn.Open();
+
+            const string sql = @"
+                        SELECT id_valor, id_tipovalor, 
+                               valor_entero, valor_decimal, valor_string, valor_binario, valor_bit
+                        FROM dbo.valores";
+
+            using var cmd = new SqlCommand(sql, conn);
+            using var reader = cmd.ExecuteReader();
+
+            int iId = reader.GetOrdinal("id_valor");      // smallint
+            int iTipo = reader.GetOrdinal("id_tipovalor");  // tinyint
+            int iEntero = reader.GetOrdinal("valor_entero");  // int
+            int iDecimal = reader.GetOrdinal("valor_decimal"); // decimal(18,4)
+            int iString = reader.GetOrdinal("valor_string");  // varchar(500)
+            int iBinario = reader.GetOrdinal("valor_binario"); // binary(500)
+            int iBit = reader.GetOrdinal("valor_bit");     // bit
+
+            while (reader.Read())
+            {
+                short id = reader.GetInt16(iId);       // SMALLINT -> short
+                byte tipo = reader.GetByte(iTipo);      // TINYINT  -> byte
+
+                object data = null;
+
+                switch (tipo)
+                {
+                    case 1: // entero
+                        data = reader.IsDBNull(iEntero) ? 0 : reader.GetInt32(iEntero);
+                        break;
+
+                    case 2: // decimal
+                        if (!reader.IsDBNull(iDecimal))
                         {
-                            Id = id,
-                            Tipo = tipo,
-                            Valor = valor
-                        };
-                    }
+                            // guardamos double para simplificar comparaciones
+                            data = Convert.ToDouble(reader.GetDecimal(iDecimal), System.Globalization.CultureInfo.InvariantCulture);
+                        }
+                        else data = 0.0;
+                        break;
+
+                    case 3: // string
+                        data = reader.IsDBNull(iString) ? string.Empty : reader.GetString(iString);
+                        break;
+
+                    case 4: // binario (si lo usás)
+                        data = reader.IsDBNull(iBinario) ? Array.Empty<byte>() : (byte[])reader[iBinario];
+                        break;
+
+                    case 5: // bit
+                        data = !reader.IsDBNull(iBit) && reader.GetBoolean(iBit);
+                        break;
+
+                    default:
+                        // tipo no soportado: lo ignoramos
+                        break;
+                }
+
+                if (data != null)
+                {
+                    valores[id] = new ValorActual
+                    {
+                        Id = id,    // short
+                        Tipo = tipo,  // 1,2,3,4,5
+                        Valor = data
+                    };
                 }
             }
-            catch
-            {
-                if (conn.State == ConnectionState.Open)
-                    conn.Close();
-                throw;
-            }
+
             return valores;
         }
+
 
         private void ActualizarEnCursoRegla(ReglaAlarma regla)
         {
             using var conn = new SqlConnection(_connectionString);
-            try
-            {
-                conn.Open();
-                using var cmd = new SqlCommand("UPDATE reglas_alarma SET en_curso = @enCurso WHERE id_regla = @id", conn);
-                cmd.Parameters.AddWithValue("@enCurso", regla.EnCurso);
-                cmd.Parameters.AddWithValue("@id", regla.Id);
-                cmd.ExecuteNonQuery();
-            }
-            catch
-            {
-                if (conn.State == ConnectionState.Open)
-                    conn.Close();
-                throw;
-            }
+            conn.Open();
+
+            using var cmd = new SqlCommand(
+                "UPDATE reglas_alarma SET en_curso = @enCurso WHERE id_regla = @id",
+                conn);
+
+            cmd.Parameters.Add("@enCurso", SqlDbType.Bit).Value = regla.EnCurso;
+            cmd.Parameters.Add("@id", SqlDbType.Int).Value = regla.Id;
+
+            cmd.ExecuteNonQuery();
         }
 
         private void LogDisparo(ReglaAlarma regla)
         {
             using var conn = new SqlConnection(_connectionString);
-            try
-            {
-                conn.Open();
-                using var cmd = new SqlCommand("INSERT INTO disparos_alarma (id_regla, mensaje, timestamp) VALUES (@id, @msg, @ts)", conn);
-                cmd.Parameters.AddWithValue("@id", regla.Id);
-                cmd.Parameters.AddWithValue("@msg", regla.Mensaje ?? "");
-                cmd.Parameters.AddWithValue("@ts", DateTime.Now);
-                cmd.ExecuteNonQuery();
-            }
-            catch
-            {
-                if (conn.State == ConnectionState.Open)
-                    conn.Close();
-                throw;
-            }
+            conn.Open();
+
+            using var cmd = new SqlCommand(
+                "INSERT INTO disparos_alarmas (id_regla, mensaje, timestamp) VALUES (@id, @msg, @ts)",
+                conn);
+
+            cmd.Parameters.Add("@id", SqlDbType.Int).Value = regla.Id;
+            cmd.Parameters.Add("@msg", SqlDbType.NVarChar, -1).Value = (object?)regla.Mensaje ?? DBNull.Value;
+            cmd.Parameters.Add("@ts", SqlDbType.DateTime2).Value = DateTime.UtcNow;
+
+            cmd.ExecuteNonQuery();
         }
     }
 }
