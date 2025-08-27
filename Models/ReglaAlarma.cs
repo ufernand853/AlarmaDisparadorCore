@@ -1,3 +1,5 @@
+using System;
+
 namespace AlarmaDisparadorCore.Models
 {
     public class ReglaAlarma
@@ -8,5 +10,10 @@ namespace AlarmaDisparadorCore.Models
         public string Mensaje { get; set; }
         public bool Activo { get; set; }
         public bool EnCurso { get; set; } = false;
+        public bool EnviarCorreo { get; set; }
+        public string EmailDestino { get; set; }
+        public TimeSpan? HoraInicio { get; set; }
+        public TimeSpan? HoraFin { get; set; }
+        public int IntervaloMin { get; set; }
     }
 }
