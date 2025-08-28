@@ -12,8 +12,6 @@ namespace AlarmaDisparadorCore.Models
         public bool EnCurso { get; set; } = false;
         public bool EnviarCorreo { get; set; }
         public string EmailDestino { get; set; }
-        public TimeSpan? HoraInicio { get; set; }
-        public TimeSpan? HoraFin { get; set; }
-        public int IntervaloMin { get; set; }
+        public int IntervaloMinutos { get; set; }
     }
 }
