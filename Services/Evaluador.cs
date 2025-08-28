@@ -181,7 +181,7 @@ namespace AlarmaDisparadorCore.Services
             try
             {
                 conn.Open();
-                using var cmd = new SqlCommand("SELECT id_regla, nombre, operador, mensaje, activo, en_curso, enviar_correo, email_destino, hora_inicio, hora_fin, intervalo_min FROM reglas_alarma", conn);
+                using var cmd = new SqlCommand("SELECT id_regla, nombre, operador, mensaje, activo, en_curso, enviar_correo, email_destino, intervalo_minutos FROM reglas_alarma", conn);
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
                 {
@@ -195,9 +195,7 @@ namespace AlarmaDisparadorCore.Services
                         EnCurso = reader.IsDBNull(5) ? false : reader.GetBoolean(5),
                         EnviarCorreo = reader.IsDBNull(6) ? false : reader.GetBoolean(6),
                         EmailDestino = reader.IsDBNull(7) ? null : reader.GetString(7),
-                        HoraInicio = reader.IsDBNull(8) ? null : reader.GetTimeSpan(8),
-                        HoraFin = reader.IsDBNull(9) ? null : reader.GetTimeSpan(9),
-                        IntervaloMin = reader.IsDBNull(10) ? 0 : Convert.ToInt32(reader.GetValue(10))
+                        IntervaloMinutos = reader.IsDBNull(8) ? 0 : Convert.ToInt32(reader.GetValue(8))
                     });
                 }
             }
@@ -323,14 +321,14 @@ namespace AlarmaDisparadorCore.Services
 
         private bool DebeDisparar(ReglaAlarma regla)
         {
-            if (regla.IntervaloMin <= 0)
+            if (regla.IntervaloMinutos <= 0)
                 return true;
 
             var ultimo = ObtenerUltimoDisparo(regla.Id);
             if (ultimo == null)
                 return true;
 
-            return (DateTime.Now - ultimo.Value).TotalMinutes >= regla.IntervaloMin;
+            return (DateTime.Now - ultimo.Value).TotalMinutes >= regla.IntervaloMinutos;
         }
 
         private DateTime? ObtenerUltimoDisparo(int idRegla)
