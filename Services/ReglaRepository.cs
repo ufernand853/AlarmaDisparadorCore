@@ -22,7 +22,7 @@ namespace AlarmaDisparadorCore.Services
 
         public void ActualizarRegla(ReglaAlarma regla)
         {
-            const string sqlRule = @"UPDATE dbo.reglas_alarma SET nombre = @Name, operador = @LogicOperator, mensaje = @Message, activo = @IsActive, enviar_correo = @SendEmail, email_destino = @EmailTo, hora_inicio = @TimeStart, hora_fin = @TimeEnd, intervalo_min = @Interval WHERE id_regla = @Id";
+            const string sqlRule = @"UPDATE dbo.reglas_alarma SET nombre = @Name, operador = @LogicOperator, mensaje = @Message, activo = @IsActive, enviar_correo = @SendEmail, email_destino = @EmailTo, intervalo_minutos = @IntervaloMinutos WHERE id_regla = @Id";
 
             using var conn = new SqlConnection(_connectionString);
             conn.Open();
@@ -34,9 +34,7 @@ namespace AlarmaDisparadorCore.Services
             cmd.Parameters.AddWithValue("@IsActive", regla.Activo);
             cmd.Parameters.AddWithValue("@SendEmail", regla.EnviarCorreo);
             cmd.Parameters.AddWithValue("@EmailTo", (object?)regla.EmailDestino ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@TimeStart", (object?)regla.HoraInicio ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@TimeEnd", (object?)regla.HoraFin ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@Interval", regla.IntervaloMin);
+            cmd.Parameters.AddWithValue("@IntervaloMinutos", regla.IntervaloMinutos);
             cmd.ExecuteNonQuery();
         }
     }
