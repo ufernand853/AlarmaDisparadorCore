@@ -22,7 +22,7 @@ namespace AlarmaDisparadorCore.Services
 
         public void ActualizarRegla(ReglaAlarma regla)
         {
-            const string sqlRule = @"UPDATE dbo.reglas_alarma SET nombre = @Name, operador = @LogicOperator, mensaje = @Message, activo = @IsActive, enviar_correo = @SendEmail, email_destino = @EmailTo, intervalo_minutos = @IntervaloMinutos WHERE id_regla = @Id";
+            const string sqlRule = @"UPDATE dbo.reglas_alarmas SET nombre = @Name, operador = @LogicOperator, mensaje = @Message, activo = @IsActive, enviar_correo = @SendEmail, email_destino = @EmailTo, intervalo_minutos = @IntervaloMinutos WHERE id_regla = @Id";
 
             using var conn = new SqlConnection(_connectionString);
             conn.Open();
