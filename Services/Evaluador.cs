@@ -233,8 +233,11 @@ namespace AlarmaDisparadorCore.Services
 
         private bool DebeDisparar(ReglaAlarma regla)
         {
-            if (regla.IntervaloMinutos <= 0)
+            if (!regla.EnCurso)
                 return true;
+
+            if (regla.IntervaloMinutos <= 0)
+                return false;
 
             var ultimo = ObtenerUltimoDisparo(regla.Id);
             if (ultimo == null)
