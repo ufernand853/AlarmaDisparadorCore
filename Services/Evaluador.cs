@@ -321,8 +321,11 @@ namespace AlarmaDisparadorCore.Services
 
         private bool DebeDisparar(ReglaAlarma regla)
         {
-            if (regla.IntervaloMinutos <= 0)
+            if (!regla.EnCurso)
                 return true;
+
+            if (regla.IntervaloMinutos <= 0)
+                return false;
 
             var ultimo = ObtenerUltimoDisparo(regla.Id);
             if (ultimo == null)
@@ -337,7 +340,7 @@ namespace AlarmaDisparadorCore.Services
             try
             {
                 conn.Open();
-                using var cmd = new SqlCommand("SELECT TOP 1 timestamp FROM disparos_alarma WHERE id_regla = @id ORDER BY timestamp DESC", conn);
+                using var cmd = new SqlCommand("SELECT TOP 1 timestamp FROM disparos_alarmas WHERE id_regla = @id ORDER BY timestamp DESC", conn);
                 cmd.Parameters.AddWithValue("@id", idRegla);
                 var result = cmd.ExecuteScalar();
                 if (result == null || result == DBNull.Value)
@@ -370,17 +373,21 @@ namespace AlarmaDisparadorCore.Services
         private void LogDisparo(ReglaAlarma regla)
         {
             using var conn = new SqlConnection(_connectionString);
-            conn.Open();
-
-            using var cmd = new SqlCommand(
-                "INSERT INTO disparos_alarmas (id_regla, mensaje, timestamp) VALUES (@id, @msg, @ts)",
-                conn);
-
-            cmd.Parameters.Add("@id", SqlDbType.Int).Value = regla.Id;
-            cmd.Parameters.Add("@msg", SqlDbType.NVarChar, -1).Value = (object?)regla.Mensaje ?? DBNull.Value;
-            cmd.Parameters.Add("@ts", SqlDbType.DateTime2).Value = DateTime.UtcNow;
-
-            cmd.ExecuteNonQuery();
+            try
+            {
+                conn.Open();
+                using var cmd = new SqlCommand("INSERT INTO disparos_alarmas (id_regla, mensaje, timestamp) VALUES (@id, @msg, @ts)", conn);
+                cmd.Parameters.AddWithValue("@id", regla.Id);
+                cmd.Parameters.AddWithValue("@msg", regla.Mensaje ?? "");
+                cmd.Parameters.AddWithValue("@ts", DateTime.Now);
+                cmd.ExecuteNonQuery();
+            }
+            catch
+            {
+                if (conn.State == ConnectionState.Open)
+                    conn.Close();
+                throw;
+            }
         }
     }
 }
