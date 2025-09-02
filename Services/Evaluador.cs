@@ -342,15 +342,19 @@ namespace AlarmaDisparadorCore.Services
 
         private bool DebeDisparar(ReglaAlarma regla)
         {
-            if (!regla.EnCurso)
+            // Si la regla ya está en curso no se debe disparar nuevamente hasta que
+            // las condiciones dejen de cumplirse y se reinicie el estado.
+            if (regla.EnCurso)
+                return false;
+
+            // Si no hay restricción de intervalo se permite el disparo inmediato
+            if (regla.IntervaloMinutos <= 0)
                 return true;
 
-            if (regla.IntervaloMinutos <= 0)
-                return false;
-
+            // Evitamos disparar si ya existe un disparo registrado dentro del intervalo
             var ultimo = ObtenerUltimoDisparo(regla.Id);
             if (ultimo == null)
-                return false;
+                return true;
 
             return (DateTime.Now - ultimo.Value).TotalMinutes >= regla.IntervaloMinutos;
         }
