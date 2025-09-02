@@ -14,6 +14,7 @@ namespace AlarmaDisparadorCore.Services
     {
         private readonly string _connectionString;
         private readonly HashSet<int> _reglasProcesadas = new();
+        private readonly Dictionary<int, DateTime> _inicioCumplimiento = new();
 
         public Evaluador()
         {
@@ -49,22 +50,35 @@ namespace AlarmaDisparadorCore.Services
 
                 if (cumpleTodas)
                 {
-                    bool primeraEjecucionEnCurso = regla.EnCurso && !_reglasProcesadas.Contains(regla.Id);
-                    if (!primeraEjecucionEnCurso && DebeDisparar(regla))
+                    var ahora = DateTime.Now;
+                    if (!_inicioCumplimiento.ContainsKey(regla.Id))
                     {
-                        Console.WriteLine($"Regla '{regla.Nombre}' disparada: {regla.Mensaje}");
-                        LogDisparo(regla);
+                        _inicioCumplimiento[regla.Id] = ahora;
                     }
 
-                    if (!regla.EnCurso)
+                    bool tiempoCumplido = (ahora - _inicioCumplimiento[regla.Id]).TotalMinutes >= regla.IntervaloMinutos;
+
+                    if (tiempoCumplido)
                     {
-                        regla.EnCurso = true;
-                        ActualizarEnCursoRegla(regla);
+                        bool primeraEjecucionEnCurso = regla.EnCurso && !_reglasProcesadas.Contains(regla.Id);
+                        if (!primeraEjecucionEnCurso && DebeDisparar(regla))
+                        {
+                            Console.WriteLine($"Regla '{regla.Nombre}' disparada: {regla.Mensaje}");
+                            LogDisparo(regla);
+                        }
+
+                        if (!regla.EnCurso)
+                        {
+                            regla.EnCurso = true;
+                            ActualizarEnCursoRegla(regla);
+                        }
+                        _reglasProcesadas.Add(regla.Id);
                     }
-                    _reglasProcesadas.Add(regla.Id);
                 }
                 else
                 {
+                    _inicioCumplimiento.Remove(regla.Id);
+
                     if (regla.EnCurso)
                     {
                         regla.EnCurso = false;
