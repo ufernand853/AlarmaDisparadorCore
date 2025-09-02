@@ -13,7 +13,7 @@ namespace AlarmaDisparadorCore.Services
     public class Evaluador
     {
         private readonly string _connectionString;
-        private readonly HashSet<int> _reglasProcesadas = new();
+        private readonly Dictionary<int, DateTime> _inicioCumplimiento = new();
 
         public Evaluador()
         {
@@ -49,28 +49,31 @@ namespace AlarmaDisparadorCore.Services
 
                 if (cumpleTodas)
                 {
-                    bool primeraEjecucionEnCurso = regla.EnCurso && !_reglasProcesadas.Contains(regla.Id);
-                    if (!primeraEjecucionEnCurso && DebeDisparar(regla))
+                    var ahora = DateTime.Now;
+                    if (!_inicioCumplimiento.ContainsKey(regla.Id))
+                    {
+                        _inicioCumplimiento[regla.Id] = ahora;
+                    }
+
+                    bool tiempoCumplido = (ahora - _inicioCumplimiento[regla.Id]).TotalMinutes >= regla.IntervaloMinutos;
+
+                    if (tiempoCumplido && !regla.EnCurso)
                     {
                         Console.WriteLine($"Regla '{regla.Nombre}' disparada: {regla.Mensaje}");
                         LogDisparo(regla);
-                    }
-
-                    if (!regla.EnCurso)
-                    {
                         regla.EnCurso = true;
                         ActualizarEnCursoRegla(regla);
                     }
-                    _reglasProcesadas.Add(regla.Id);
                 }
                 else
                 {
+                    _inicioCumplimiento.Remove(regla.Id);
+
                     if (regla.EnCurso)
                     {
                         regla.EnCurso = false;
                         ActualizarEnCursoRegla(regla);
                     }
-                    _reglasProcesadas.Remove(regla.Id);
                 }
             }
         }
@@ -326,41 +329,6 @@ namespace AlarmaDisparadorCore.Services
             return valores;
         }
 
-        private bool DebeDisparar(ReglaAlarma regla)
-        {
-            if (!regla.EnCurso)
-                return true;
-
-            if (regla.IntervaloMinutos <= 0)
-                return false;
-
-            var ultimo = ObtenerUltimoDisparo(regla.Id);
-            if (ultimo == null)
-                return false;
-
-            return (DateTime.Now - ultimo.Value).TotalMinutes >= regla.IntervaloMinutos;
-        }
-
-        private DateTime? ObtenerUltimoDisparo(int idRegla)
-        {
-            using var conn = new SqlConnection(_connectionString);
-            try
-            {
-                conn.Open();
-                using var cmd = new SqlCommand("SELECT TOP 1 timestamp FROM disparos_alarmas WHERE id_regla = @id ORDER BY timestamp DESC", conn);
-                cmd.Parameters.AddWithValue("@id", idRegla);
-                var result = cmd.ExecuteScalar();
-                if (result == null || result == DBNull.Value)
-                    return null;
-                return Convert.ToDateTime(result);
-            }
-            catch
-            {
-                if (conn.State == ConnectionState.Open)
-                    conn.Close();
-                throw;
-            }
-        }
 
         private void ActualizarEnCursoRegla(ReglaAlarma regla)
         {
