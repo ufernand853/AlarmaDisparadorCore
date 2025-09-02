@@ -13,6 +13,7 @@ namespace AlarmaDisparadorCore.Services
     public class Evaluador
     {
         private readonly string _connectionString;
+        private readonly HashSet<int> _reglasProcesadas = new();
 
         public Evaluador()
         {
@@ -38,7 +39,7 @@ namespace AlarmaDisparadorCore.Services
 
                 bool cumpleTodas = condiciones.All(cond =>
                 {
-                    // Si no existe el valor para la condiciÛn -> no cumple
+                    // Si no existe el valor para la condici√≥n -> no cumple
                     if (!valores.ContainsKey(cond.IdValor))
                         return false;
 
@@ -48,7 +49,8 @@ namespace AlarmaDisparadorCore.Services
 
                 if (cumpleTodas)
                 {
-                    if (DebeDisparar(regla))
+                    bool primeraEjecucionEnCurso = regla.EnCurso && !_reglasProcesadas.Contains(regla.Id);
+                    if (!primeraEjecucionEnCurso && DebeDisparar(regla))
                     {
                         Console.WriteLine($"Regla '{regla.Nombre}' disparada: {regla.Mensaje}");
                         LogDisparo(regla);
@@ -59,17 +61,22 @@ namespace AlarmaDisparadorCore.Services
                         regla.EnCurso = true;
                         ActualizarEnCursoRegla(regla);
                     }
+                    _reglasProcesadas.Add(regla.Id);
                 }
-                else if (regla.EnCurso)
+                else
                 {
-                    regla.EnCurso = false;
-                    ActualizarEnCursoRegla(regla);
+                    if (regla.EnCurso)
+                    {
+                        regla.EnCurso = false;
+                        ActualizarEnCursoRegla(regla);
+                    }
+                    _reglasProcesadas.Remove(regla.Id);
                 }
             }
         }
 
         /// <summary>
-        /// Compara el valor actual (tipado) contra el literal 'valor' seg˙n el operador.
+        /// Compara el valor actual (tipado) contra el literal 'valor' seg√∫n el operador.
         /// Tipos:
         /// 1 = entero, 2 = decimal, 3 = string, 5 = bit
         /// </summary>
@@ -148,7 +155,7 @@ namespace AlarmaDisparadorCore.Services
             }
             catch
             {
-                // Cualquier error de parseo o conversiÛn -> condiciÛn no cumple
+                // Cualquier error de parseo o conversi√≥n -> condici√≥n no cumple
                 return false;
             }
         }
@@ -292,7 +299,7 @@ namespace AlarmaDisparadorCore.Services
                         data = reader.IsDBNull(iString) ? string.Empty : reader.GetString(iString);
                         break;
 
-                    case 4: // binario (si lo us·s)
+                    case 4: // binario (si lo us√°s)
                         data = reader.IsDBNull(iBinario) ? Array.Empty<byte>() : (byte[])reader[iBinario];
                         break;
 
@@ -329,7 +336,7 @@ namespace AlarmaDisparadorCore.Services
 
             var ultimo = ObtenerUltimoDisparo(regla.Id);
             if (ultimo == null)
-                return true;
+                return false;
 
             return (DateTime.Now - ultimo.Value).TotalMinutes >= regla.IntervaloMinutos;
         }
