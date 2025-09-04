@@ -19,9 +19,17 @@ var evaluador = new Evaluador();
 
 while (true)
 {
-    Console.WriteLine($"Inicio de evaluación: {DateTime.Now:O}");
-    evaluador.EvaluarReglas();
-    Console.WriteLine($"Fin de evaluación: {DateTime.Now:O}");
+    try
+    {
+        Logger.Log("Inicio de evaluación");
+        evaluador.EvaluarReglas();
+        Logger.Log("Fin de evaluación");
+    }
+    catch (Exception ex)
+    {
+        Logger.LogError(ex, "MainLoop");
+    }
+
     Thread.Sleep(TimeSpan.FromSeconds(intervaloSegundos));
 }
 

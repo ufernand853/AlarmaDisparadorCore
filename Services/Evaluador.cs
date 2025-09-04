@@ -28,64 +28,71 @@ namespace AlarmaDisparadorCore.Services
 
         public void EvaluarReglas()
         {
-            // Reglas
-            List<ReglaAlarma> reglas = ObtenerReglas();
-
-            // Valores actuales indexados por id_valor (SMALLINT -> short)
-            Dictionary<short, ValorActual> valores = ObtenerValoresActuales();
-
-            foreach (var regla in reglas.Where(r => r.Activo))
+            try
             {
-                var condiciones = ObtenerCondicionesPorRegla(regla.Id);
+                // Reglas
+                List<ReglaAlarma> reglas = ObtenerReglas();
 
-                bool cumpleTodas = condiciones.All(cond =>
+                // Valores actuales indexados por id de variable (SMALLINT -> short)
+                Dictionary<short, ValorActual> valores = ObtenerValoresActuales();
+
+                foreach (var regla in reglas.Where(r => r.Activo))
                 {
-                    // Si no existe el valor para la condición -> no cumple
-                    if (!valores.ContainsKey(cond.IdValor))
-                        return false;
+                    var condiciones = ObtenerCondicionesPorRegla(regla.Id);
 
-                    var actual = valores[cond.IdValor];
-                    return Comparar(actual, cond.Operador, cond.Valor);
-                });
-
-                if (cumpleTodas)
-                {
-                    var ahora = DateTime.Now;
-                    if (!_inicioCumplimiento.ContainsKey(regla.Id))
+                    bool cumpleTodas = condiciones.All(cond =>
                     {
-                        _inicioCumplimiento[regla.Id] = ahora;
-                    }
+                        // Si no existe el valor para la condición -> no cumple
+                        if (!valores.ContainsKey(cond.IdValor))
+                            return false;
 
-                    bool tiempoCumplido = (ahora - _inicioCumplimiento[regla.Id]).TotalMinutes >= regla.IntervaloMinutos;
+                        var actual = valores[cond.IdValor];
+                        return Comparar(actual, cond.Operador, cond.Valor);
+                    });
 
-                    if (tiempoCumplido)
+                    if (cumpleTodas)
                     {
-                        bool primeraEjecucionEnCurso = regla.EnCurso && !_reglasProcesadas.Contains(regla.Id);
-                        if (!primeraEjecucionEnCurso && DebeDisparar(regla))
+                        var ahora = DateTime.Now;
+                        if (!_inicioCumplimiento.ContainsKey(regla.Id))
                         {
-                            Console.WriteLine($"Regla '{regla.Nombre}' disparada: {regla.Mensaje}");
-                            LogDisparo(regla);
+                            _inicioCumplimiento[regla.Id] = ahora;
                         }
 
-                        if (!regla.EnCurso)
+                        bool tiempoCumplido = (ahora - _inicioCumplimiento[regla.Id]).TotalMinutes >= regla.IntervaloMinutos;
+
+                        if (tiempoCumplido)
                         {
-                            regla.EnCurso = true;
+                            bool primeraEjecucionEnCurso = regla.EnCurso && !_reglasProcesadas.Contains(regla.Id);
+                            if (!primeraEjecucionEnCurso && DebeDisparar(regla))
+                            {
+                                Logger.Log($"Regla '{regla.Nombre}' disparada: {regla.Mensaje}");
+                                LogDisparo(regla);
+                            }
+
+                            if (!regla.EnCurso)
+                            {
+                                regla.EnCurso = true;
+                                ActualizarEnCursoRegla(regla);
+                            }
+                            _reglasProcesadas.Add(regla.Id);
+                        }
+                    }
+                    else
+                    {
+                        _inicioCumplimiento.Remove(regla.Id);
+
+                        if (regla.EnCurso)
+                        {
+                            regla.EnCurso = false;
                             ActualizarEnCursoRegla(regla);
                         }
-                        _reglasProcesadas.Add(regla.Id);
+                        _reglasProcesadas.Remove(regla.Id);
                     }
                 }
-                else
-                {
-                    _inicioCumplimiento.Remove(regla.Id);
-
-                    if (regla.EnCurso)
-                    {
-                        regla.EnCurso = false;
-                        ActualizarEnCursoRegla(regla);
-                    }
-                    _reglasProcesadas.Remove(regla.Id);
-                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, nameof(EvaluarReglas));
             }
         }
 
@@ -220,8 +227,9 @@ namespace AlarmaDisparadorCore.Services
                     });
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.LogError(ex, nameof(ObtenerReglas));
                 if (conn.State == ConnectionState.Open)
                     conn.Close();
                 throw;
@@ -269,17 +277,20 @@ namespace AlarmaDisparadorCore.Services
             var valores = new Dictionary<short, ValorActual>();
 
             using var conn = new SqlConnection(_connectionString);
-            conn.Open();
+            try
+            {
+                conn.Open();
 
-            const string sql = @"
-                        SELECT id_valor, id_tipovalor, 
-                               valor_entero, valor_decimal, valor_string, valor_binario, valor_bit
-                        FROM dbo.valores";
+                const string sql = @"
+                        SELECT v.id_variable, val.id_tipovalor,
+                               val.valor_entero, val.valor_decimal, val.valor_string, val.valor_binario, val.valor_bit
+                        FROM dbo.variables v
+                        JOIN dbo.valores val ON v.id_valor = val.id_valor";
 
-            using var cmd = new SqlCommand(sql, conn);
-            using var reader = cmd.ExecuteReader();
+                using var cmd = new SqlCommand(sql, conn);
+                using var reader = cmd.ExecuteReader();
 
-            int iId = reader.GetOrdinal("id_valor");      // smallint
+            int iId = reader.GetOrdinal("id_variable");      // smallint
             int iTipo = reader.GetOrdinal("id_tipovalor");  // tinyint
             int iEntero = reader.GetOrdinal("valor_entero");  // int
             int iDecimal = reader.GetOrdinal("valor_decimal"); // decimal(18,4)
@@ -287,54 +298,62 @@ namespace AlarmaDisparadorCore.Services
             int iBinario = reader.GetOrdinal("valor_binario"); // binary(500)
             int iBit = reader.GetOrdinal("valor_bit");     // bit
 
-            while (reader.Read())
-            {
-                short id = reader.GetInt16(iId);       // SMALLINT -> short
-                byte tipo = reader.GetByte(iTipo);      // TINYINT  -> byte
-
-                object data = null;
-
-                switch (tipo)
+                while (reader.Read())
                 {
-                    case 1: // entero
-                        data = reader.IsDBNull(iEntero) ? 0 : reader.GetInt32(iEntero);
-                        break;
+                    short id = reader.GetInt16(iId);       // SMALLINT -> short
+                    byte tipo = reader.GetByte(iTipo);      // TINYINT  -> byte
 
-                    case 2: // decimal
-                        if (!reader.IsDBNull(iDecimal))
-                        {
-                            // guardamos double para simplificar comparaciones
-                            data = Convert.ToDouble(reader.GetDecimal(iDecimal), System.Globalization.CultureInfo.InvariantCulture);
-                        }
-                        else data = 0.0;
-                        break;
+                    object data = null;
 
-                    case 3: // string
-                        data = reader.IsDBNull(iString) ? string.Empty : reader.GetString(iString);
-                        break;
-
-                    case 4: // binario (si lo usás)
-                        data = reader.IsDBNull(iBinario) ? Array.Empty<byte>() : (byte[])reader[iBinario];
-                        break;
-
-                    case 5: // bit
-                        data = !reader.IsDBNull(iBit) && reader.GetBoolean(iBit);
-                        break;
-
-                    default:
-                        // tipo no soportado: lo ignoramos
-                        break;
-                }
-
-                if (data != null)
-                {
-                    valores[id] = new ValorActual
+                    switch (tipo)
                     {
-                        Id = id,    // short
-                        Tipo = tipo,  // 1,2,3,4,5
-                        Valor = data
-                    };
+                        case 1: // entero
+                            data = reader.IsDBNull(iEntero) ? 0 : reader.GetInt32(iEntero);
+                            break;
+
+                        case 2: // decimal
+                            if (!reader.IsDBNull(iDecimal))
+                            {
+                                // guardamos double para simplificar comparaciones
+                                data = Convert.ToDouble(reader.GetDecimal(iDecimal), System.Globalization.CultureInfo.InvariantCulture);
+                            }
+                            else data = 0.0;
+                            break;
+
+                        case 3: // string
+                            data = reader.IsDBNull(iString) ? string.Empty : reader.GetString(iString);
+                            break;
+
+                        case 4: // binario (si lo usás)
+                            data = reader.IsDBNull(iBinario) ? Array.Empty<byte>() : (byte[])reader[iBinario];
+                            break;
+
+                        case 5: // bit
+                            data = !reader.IsDBNull(iBit) && reader.GetBoolean(iBit);
+                            break;
+
+                        default:
+                            // tipo no soportado: lo ignoramos
+                            break;
+                    }
+
+                    if (data != null)
+                    {
+                        valores[id] = new ValorActual
+                        {
+                            Id = id,    // short
+                            Tipo = tipo,  // 1,2,3,4,5
+                            Valor = data
+                        };
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, nameof(ObtenerValoresActuales));
+                if (conn.State == ConnectionState.Open)
+                    conn.Close();
+                throw;
             }
 
             return valores;
@@ -372,8 +391,9 @@ namespace AlarmaDisparadorCore.Services
                     return null;
                 return Convert.ToDateTime(result);
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.LogError(ex, nameof(ObtenerUltimoDisparo));
                 if (conn.State == ConnectionState.Open)
                     conn.Close();
                 throw;
@@ -407,8 +427,9 @@ namespace AlarmaDisparadorCore.Services
                 cmd.Parameters.AddWithValue("@ts", DateTime.Now);
                 cmd.ExecuteNonQuery();
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.LogError(ex, nameof(LogDisparo));
                 if (conn.State == ConnectionState.Open)
                     conn.Close();
                 throw;
