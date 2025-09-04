@@ -108,33 +108,21 @@ namespace AlarmaDisparadorCore.Services
                 switch (actual.Tipo)
                 {
                     case 1: // entero
-                        {
-                            int esperado = int.Parse(valor, NumberStyles.Integer, CultureInfo.InvariantCulture);
-                            int actualInt = Convert.ToInt32(actual.Valor);
-                            return operador switch
-                            {
-                                "==" => actualInt == esperado,
-                                "!=" => actualInt != esperado,
-                                ">" => actualInt > esperado,
-                                ">=" => actualInt >= esperado,
-                                "<" => actualInt < esperado,
-                                "<=" => actualInt <= esperado,
-                                _ => false
-                            };
-                        }
-
                     case 2: // decimal
                         {
-                            double esperado = double.Parse(valor, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture);
-                            double actualDec = Convert.ToDouble(actual.Valor, CultureInfo.InvariantCulture);
+                            if (!decimal.TryParse(valor, NumberStyles.Any, CultureInfo.InvariantCulture, out var esperado))
+                                return false;
+
+                            decimal actualNum = Convert.ToDecimal(actual.Valor, CultureInfo.InvariantCulture);
+
                             return operador switch
                             {
-                                "==" => actualDec == esperado,
-                                "!=" => actualDec != esperado,
-                                ">" => actualDec > esperado,
-                                ">=" => actualDec >= esperado,
-                                "<" => actualDec < esperado,
-                                "<=" => actualDec <= esperado,
+                                "==" => actualNum == esperado,
+                                "!=" => actualNum != esperado,
+                                ">" => actualNum > esperado,
+                                ">=" => actualNum >= esperado,
+                                "<" => actualNum < esperado,
+                                "<=" => actualNum <= esperado,
                                 _ => false
                             };
                         }
