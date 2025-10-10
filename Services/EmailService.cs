@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Mail;
+using System.Text;
 
 namespace AlarmaDisparadorCore.Services
 {
@@ -113,7 +114,14 @@ namespace AlarmaDisparadorCore.Services
 
                 client.Send(message);
 
-                Logger.Log($"Correo enviado para la regla '{regla.Nombre}' a {string.Join(", ", destinatarios)}");
+                var detalle = new StringBuilder();
+                detalle.AppendLine($"Correo enviado para la regla '{regla.Nombre}'");
+                detalle.AppendLine($"Destinatarios: {string.Join(", ", destinatarios)}");
+                detalle.AppendLine($"Asunto: {message.Subject}");
+                detalle.AppendLine("Cuerpo:");
+                detalle.AppendLine(message.Body ?? string.Empty);
+
+                Logger.Log(detalle.ToString().TrimEnd());
             }
             catch (Exception ex)
             {
