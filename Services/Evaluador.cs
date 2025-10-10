@@ -15,6 +15,7 @@ namespace AlarmaDisparadorCore.Services
         private readonly string _connectionString;
         private readonly HashSet<int> _reglasProcesadas = new();
         private readonly Dictionary<int, DateTime> _inicioCumplimiento = new();
+        private readonly EmailService _emailService;
 
         public Evaluador()
         {
@@ -24,6 +25,7 @@ namespace AlarmaDisparadorCore.Services
                 .Build();
 
             _connectionString = config.GetConnectionString("DefaultConnection");
+            _emailService = new EmailService(config);
         }
 
         public void EvaluarReglas()
@@ -67,6 +69,7 @@ namespace AlarmaDisparadorCore.Services
                             {
                                 Logger.Log($"Regla '{regla.Nombre}' disparada: {regla.Mensaje}");
                                 LogDisparo(regla);
+                                _emailService.EnviarCorreo(regla);
                             }
 
                             if (!regla.EnCurso)
