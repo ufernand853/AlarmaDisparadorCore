@@ -105,6 +105,7 @@ namespace AlarmaDisparadorCore.Services
 
                 if (!string.IsNullOrWhiteSpace(_userName) && !string.IsNullOrWhiteSpace(_password))
                 {
+                    client.UseDefaultCredentials = false;
                     client.Credentials = new NetworkCredential(_userName, _password);
                 }
                 else
