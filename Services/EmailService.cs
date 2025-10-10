@@ -34,14 +34,14 @@ namespace AlarmaDisparadorCore.Services
                 return;
             }
 
-            _enabled = section.GetValue("Enabled", true);
-            _host = section.GetValue<string>("SmtpHost");
-            _port = section.GetValue("SmtpPort", 25);
-            _enableSsl = section.GetValue("EnableSsl", false);
-            _userName = section.GetValue<string>("UserName");
-            _password = section.GetValue<string>("Password");
-            _from = section.GetValue<string>("From");
-            _subjectPrefix = section.GetValue<string>("SubjectPrefix", "");
+            _enabled = bool.TryParse(section["Enabled"], out var enabled) ? enabled : true;
+            _host = section["SmtpHost"];
+            _port = int.TryParse(section["SmtpPort"], out var port) ? port : 25;
+            _enableSsl = bool.TryParse(section["EnableSsl"], out var enableSsl) ? enableSsl : false;
+            _userName = section["UserName"];
+            _password = section["Password"];
+            _from = section["From"];
+            _subjectPrefix = section["SubjectPrefix"] ?? "";
 
             if (string.IsNullOrWhiteSpace(_from) && !string.IsNullOrWhiteSpace(_userName))
             {
