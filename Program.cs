@@ -9,6 +9,8 @@ var config = new ConfigurationBuilder()
     .AddJsonFile("appsettings.json")
     .Build();
 
+Logger.Configure(config);
+
 var intervaloSegundos = 60;
 if (int.TryParse(config["IntervaloSegundos"], out var parsedIntervalo))
 {

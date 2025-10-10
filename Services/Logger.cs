@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using System;
 using System.IO;
 
@@ -8,6 +9,19 @@ namespace AlarmaDisparadorCore.Services
         private static readonly object _lock = new();
         private static readonly string _logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app.log");
         private const int MaxLines = 200;
+        private static bool _consoleEnabled;
+
+        public static void Configure(IConfiguration configuration)
+        {
+            if (configuration == null)
+            {
+                _consoleEnabled = false;
+                return;
+            }
+
+            var section = configuration.GetSection("Logger");
+            _consoleEnabled = section.GetValue("ConsoleEnabled", false);
+        }
 
         public static void Log(string message)
         {
@@ -18,6 +32,10 @@ namespace AlarmaDisparadorCore.Services
                     var line = $"{DateTime.Now:O} {message}";
                     File.AppendAllText(_logPath, line + Environment.NewLine);
                     Truncate();
+                    if (_consoleEnabled)
+                    {
+                        Console.WriteLine(line);
+                    }
                 }
             }
             catch
