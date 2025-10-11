@@ -177,8 +177,12 @@ namespace AlarmaDisparadorCore.Services
                         return false;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.LogError(
+                    ex,
+                    $"{nameof(Comparar)} - operador: '{operador}', valor esperado: '{valor}', valor actual: '{actual?.Valor}', tipo: '{actual?.Tipo}'");
+
                 // Cualquier error de parseo o conversión -> condición no cumple
                 return false;
             }

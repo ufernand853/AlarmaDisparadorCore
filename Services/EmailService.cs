@@ -125,7 +125,9 @@ namespace AlarmaDisparadorCore.Services
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, nameof(EnviarCorreo));
+                Logger.LogError(
+                    ex,
+                    $"{nameof(EnviarCorreo)} - regla: '{regla?.Nombre}', destinatarios configurados: '{regla?.EmailDestino}', host: '{_host}', puerto: '{_port}', usuario: '{_userName}'");
             }
         }
 
