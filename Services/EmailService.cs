@@ -19,6 +19,7 @@ namespace AlarmaDisparadorCore.Services
         private readonly string _password;
         private readonly string _from;
         private readonly string _subjectPrefix;
+        private readonly int _timeoutMilliseconds;
 
         public EmailService(IConfiguration configuration)
         {
@@ -43,6 +44,9 @@ namespace AlarmaDisparadorCore.Services
             _password = section["Password"];
             _from = section["From"];
             _subjectPrefix = section["SubjectPrefix"] ?? "";
+            _timeoutMilliseconds = int.TryParse(section["TimeoutMilliseconds"], out var timeoutMs) && timeoutMs > 0
+                ? timeoutMs
+                : 100000; // Valor predeterminado de SmtpClient.Timeout
 
             if (string.IsNullOrWhiteSpace(_from) && !string.IsNullOrWhiteSpace(_userName))
             {
@@ -100,7 +104,8 @@ namespace AlarmaDisparadorCore.Services
 
                 using var client = new SmtpClient(_host, _port)
                 {
-                    EnableSsl = _enableSsl
+                    EnableSsl = _enableSsl,
+                    Timeout = _timeoutMilliseconds
                 };
 
                 if (!string.IsNullOrWhiteSpace(_userName) && !string.IsNullOrWhiteSpace(_password))
