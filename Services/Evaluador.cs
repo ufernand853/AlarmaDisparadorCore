@@ -65,19 +65,32 @@ namespace AlarmaDisparadorCore.Services
                         if (tiempoCumplido)
                         {
                             bool primeraEjecucionEnCurso = regla.EnCurso && !_reglasProcesadas.Contains(regla.Id);
+                            bool reglaMarcadaEnCurso = regla.EnCurso;
+
                             if (!primeraEjecucionEnCurso && DebeDisparar(regla))
                             {
-                                Logger.Log($"Regla '{regla.Nombre}' disparada: {regla.Mensaje}");
-                                LogDisparo(regla);
-                                _emailService.EnviarCorreo(regla);
+                                if (!reglaMarcadaEnCurso)
+                                {
+                                    reglaMarcadaEnCurso = IntentarMarcarEnCurso(regla);
+                                }
+
+                                if (reglaMarcadaEnCurso)
+                                {
+                                    Logger.Log($"Regla '{regla.Nombre}' disparada: {regla.Mensaje}");
+                                    LogDisparo(regla);
+                                    _emailService.EnviarCorreo(regla);
+                                }
                             }
 
-                            if (!regla.EnCurso)
+                            if (!reglaMarcadaEnCurso)
                             {
-                                regla.EnCurso = true;
-                                ActualizarEnCursoRegla(regla);
+                                reglaMarcadaEnCurso = IntentarMarcarEnCurso(regla);
                             }
-                            _reglasProcesadas.Add(regla.Id);
+
+                            if (reglaMarcadaEnCurso)
+                            {
+                                _reglasProcesadas.Add(regla.Id);
+                            }
                         }
                     }
                     else
@@ -420,6 +433,42 @@ namespace AlarmaDisparadorCore.Services
             cmd.Parameters.Add("@id", SqlDbType.Int).Value = regla.Id;
 
             cmd.ExecuteNonQuery();
+        }
+
+        private bool IntentarMarcarEnCurso(ReglaAlarma regla)
+        {
+            if (regla.EnCurso)
+            {
+                return true;
+            }
+
+            using var conn = new SqlConnection(_connectionString);
+            try
+            {
+                conn.Open();
+
+                using var cmd = new SqlCommand(
+                    "UPDATE reglas_alarma SET en_curso = 1 WHERE id_regla = @id AND (en_curso IS NULL OR en_curso = 0)",
+                    conn);
+
+                cmd.Parameters.Add("@id", SqlDbType.Int).Value = regla.Id;
+
+                int filasAfectadas = cmd.ExecuteNonQuery();
+                if (filasAfectadas > 0)
+                {
+                    regla.EnCurso = true;
+                    return true;
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, nameof(IntentarMarcarEnCurso));
+                if (conn.State == ConnectionState.Open)
+                    conn.Close();
+                throw;
+            }
         }
 
         private void LogDisparo(ReglaAlarma regla)
