@@ -35,8 +35,8 @@ namespace AlarmaDisparadorCore.Services
                 // Reglas
                 List<ReglaAlarma> reglas = ObtenerReglas();
 
-                // Valores actuales indexados por id de variable (SMALLINT -> short)
-                Dictionary<short, ValorActual> valores = ObtenerValoresActuales();
+                // Valores actuales indexados por id_valor
+                Dictionary<int, ValorActual> valores = ObtenerValoresActuales();
 
                 foreach (var regla in reglas.Where(r => r.Activo))
                 {
@@ -195,7 +195,7 @@ namespace AlarmaDisparadorCore.Services
             }
         }
 
-        private List<EvaluacionCondicion> EvaluarCondiciones(IEnumerable<CondicionRegla> condiciones, Dictionary<short, ValorActual> valores)
+        private List<EvaluacionCondicion> EvaluarCondiciones(IEnumerable<CondicionRegla> condiciones, Dictionary<int, ValorActual> valores)
         {
             var resultados = new List<EvaluacionCondicion>();
 
@@ -370,9 +370,9 @@ namespace AlarmaDisparadorCore.Services
             return condiciones;
         }
 
-        private Dictionary<short, ValorActual> ObtenerValoresActuales()
+        private Dictionary<int, ValorActual> ObtenerValoresActuales()
         {
-            var valores = new Dictionary<short, ValorActual>();
+            var valores = new Dictionary<int, ValorActual>();
 
             using var conn = new SqlConnection(_connectionString);
             try
@@ -380,15 +380,15 @@ namespace AlarmaDisparadorCore.Services
                 conn.Open();
 
                 const string sql = @"
-                        SELECT v.id_variable, val.id_tipovalor,
-                               val.valor_entero, val.valor_decimal, val.valor_string, val.valor_binario, val.valor_bit
+                        SELECT val.id_valor, val.id_tipovalor,
+                                val.valor_entero, val.valor_decimal, val.valor_string, val.valor_binario, val.valor_bit
                         FROM dbo.variables v
                         JOIN dbo.valores val ON v.id_valor = val.id_valor";
 
                 using var cmd = new SqlCommand(sql, conn);
                 using var reader = cmd.ExecuteReader();
 
-            int iId = reader.GetOrdinal("id_variable");      // smallint
+            int iId = reader.GetOrdinal("id_valor");        // id_valor (clave)
             int iTipo = reader.GetOrdinal("id_tipovalor");  // tinyint
             int iEntero = reader.GetOrdinal("valor_entero");  // int
             int iDecimal = reader.GetOrdinal("valor_decimal"); // decimal(18,4)
@@ -398,7 +398,7 @@ namespace AlarmaDisparadorCore.Services
 
                 while (reader.Read())
                 {
-                    short id = reader.GetInt16(iId);       // SMALLINT -> short
+                    int idValor = Convert.ToInt32(reader.GetValue(iId));
                     byte tipo = reader.GetByte(iTipo);      // TINYINT  -> byte
 
                     object data = null;
@@ -437,9 +437,9 @@ namespace AlarmaDisparadorCore.Services
 
                     if (data != null)
                     {
-                        valores[id] = new ValorActual
+                        valores[idValor] = new ValorActual
                         {
-                            Id = id,    // short
+                            Id = idValor,
                             Tipo = tipo,  // 1,2,3,4,5
                             Valor = data
                         };
