@@ -41,16 +41,9 @@ namespace AlarmaDisparadorCore.Services
                 foreach (var regla in reglas.Where(r => r.Activo))
                 {
                     var condiciones = ObtenerCondicionesPorRegla(regla.Id);
+                    var evaluaciones = EvaluarCondiciones(condiciones, valores);
 
-                    bool cumpleTodas = condiciones.All(cond =>
-                    {
-                        // Si no existe el valor para la condición -> no cumple
-                        if (!valores.ContainsKey(cond.IdValor))
-                            return false;
-
-                        var actual = valores[cond.IdValor];
-                        return Comparar(actual, cond.Operador, cond.Valor);
-                    });
+                    bool cumpleTodas = evaluaciones.All(ev => ev.Resultado);
 
                     if (cumpleTodas)
                     {
@@ -76,6 +69,7 @@ namespace AlarmaDisparadorCore.Services
 
                                 if (reglaMarcadaEnCurso)
                                 {
+                                    RegistrarDetalleCondiciones(regla, evaluaciones);
                                     Logger.Log($"Regla '{regla.Nombre}' disparada: {regla.Mensaje}");
                                     LogDisparo(regla);
                                     _emailService.EnviarCorreo(regla);
@@ -199,6 +193,90 @@ namespace AlarmaDisparadorCore.Services
                 // Cualquier error de parseo o conversión -> condición no cumple
                 return false;
             }
+        }
+
+        private List<EvaluacionCondicion> EvaluarCondiciones(IEnumerable<CondicionRegla> condiciones, Dictionary<short, ValorActual> valores)
+        {
+            var resultados = new List<EvaluacionCondicion>();
+
+            foreach (var condicion in condiciones)
+            {
+                if (!valores.TryGetValue(condicion.IdValor, out var valorActual))
+                {
+                    resultados.Add(EvaluacionCondicion.SinValor(condicion));
+                    continue;
+                }
+
+                bool cumple = Comparar(valorActual, condicion.Operador, condicion.Valor);
+                resultados.Add(EvaluacionCondicion.ConResultado(condicion, valorActual, cumple));
+            }
+
+            return resultados;
+        }
+
+        private void RegistrarDetalleCondiciones(ReglaAlarma regla, IReadOnlyCollection<EvaluacionCondicion> evaluaciones)
+        {
+            if (evaluaciones.Count == 0)
+            {
+                Logger.Log($"  Regla '{regla.Nombre}' sin condiciones asociadas.");
+                return;
+            }
+
+            Logger.Log($"  Detalle de condiciones para '{regla.Nombre}':");
+            foreach (var evaluacion in evaluaciones)
+            {
+                Logger.Log($"    {FormatearDetalleCondicion(evaluacion)}");
+            }
+        }
+
+        private string FormatearDetalleCondicion(EvaluacionCondicion evaluacion)
+        {
+            var condicion = evaluacion.Condicion;
+            string valorEsperado = condicion.Valor ?? "(null)";
+            string valorActual = evaluacion.ValorActual != null ? FormatearValorActual(evaluacion.ValorActual) : "(sin valor)";
+            string estado = evaluacion.Resultado ? "OK" : "NO CUMPLE";
+
+            if (!string.IsNullOrEmpty(evaluacion.Observacion))
+            {
+                estado = $"{estado} - {evaluacion.Observacion}";
+            }
+
+            return $"[{condicion.IdValor}] {valorActual} {condicion.Operador} {valorEsperado} => {estado}";
+        }
+
+        private string FormatearValorActual(ValorActual actual)
+        {
+            return actual.Tipo switch
+            {
+                1 => Convert.ToInt32(actual.Valor).ToString(CultureInfo.InvariantCulture),
+                2 => Convert.ToDouble(actual.Valor, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture),
+                3 => actual.Valor?.ToString() ?? string.Empty,
+                4 => actual.Valor is byte[] bytes ? BitConverter.ToString(bytes).Replace("-", string.Empty) : "(binario)",
+                5 => (actual.Valor is bool b ? b : Convert.ToBoolean(actual.Valor)).ToString(),
+                _ => actual.Valor?.ToString() ?? string.Empty
+            };
+        }
+
+        private sealed class EvaluacionCondicion
+        {
+            private EvaluacionCondicion(CondicionRegla condicion, ValorActual? valorActual, bool resultado, string? observacion)
+            {
+                Condicion = condicion;
+                ValorActual = valorActual;
+                Resultado = resultado;
+                Observacion = observacion;
+            }
+
+            public CondicionRegla Condicion { get; }
+            public ValorActual? ValorActual { get; }
+            public bool Resultado { get; }
+            public string? Observacion { get; }
+
+            public static EvaluacionCondicion SinValor(CondicionRegla condicion) =>
+                new(condicion, null, false, "valor no disponible");
+
+            public static EvaluacionCondicion ConResultado(CondicionRegla condicion, ValorActual valorActual, bool resultado) =>
+                new(condicion, valorActual, resultado, null);
         }
         private static string DbValueToString(SqlDataReader reader, int ordinal)
         {
